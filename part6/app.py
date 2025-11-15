@@ -21,8 +21,11 @@ import os
 import time
 import urllib.request
 import urllib.error
+import pprint
 
 from .constants import BANNER, HELP, POETRYDB_URL
+
+CACHE_FILENAME = "sonnets.json"
 
 
 # ---------- Search helpers (unchanged from Part 5) ----------
@@ -168,11 +171,20 @@ def fetch_sonnets_from_api() -> List[Dict[str, Any]]:
     - You can add error handling: raise a RuntimeError (or print a helpful message) if something goes wrong.
     """
     sonnets = {}
+
+    with urllib.request.urlopen(POETRYDB_URL) as response:
+        try:
+            sonnets = json.load(response)
+        except json.decoder.JSONDecodeError:
+            raise RuntimeError("Invalid json.load() argument.")
+
+
     return sonnets
 
 
 def load_sonnets() -> List[Dict[str, Any]]:
     """ToDo 2:
+
     Load Shakespeare's sonnets with caching.
 
     Behaviour:
@@ -185,10 +197,21 @@ def load_sonnets() -> List[Dict[str, Any]]:
            - Save the data (pretty-printed) to CACHE_FILENAME.
            - Return the data.
     """
+    sonnets_path = module_relative_path(CACHE_FILENAME)
+
+    if os.path.exists(sonnets_path):
+        with open(sonnets_path) as f:
+            sonnets = json.load(f)
+        print("Loaded sonnets from the cache.")
+    else:
+        sonnets = fetch_sonnets_from_api()
+        with open(sonnets_path, "w", encoding="utf-8") as f:
+            f.write(json.dumps(sonnets, indent=2, ensure_ascii=False))
+        print("Downloaded sonnets from PoetryDB.")
 
     # Default implementation: Load from the API always
 
-    return fetch_sonnets_from_api()
+    return sonnets
 
 # ---------- Config handling (carry over from Part 5) ----------
 
@@ -198,14 +221,47 @@ def load_config() -> Dict[str, Any]:
     """ToDo 0:
     Copy your working implementation from Part 5.
     """
+    config = {}
+    path = module_relative_path("config.json")
+    config_defaults = DEFAULT_CONFIG.copy()
 
-    return DEFAULT_CONFIG.copy()
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            try:
+                tmp = json.load(f)
+            except json.decoder.JSONDecodeError:
+                tmp = {}
+    else:
+        return config_defaults
+
+    for x in config_defaults.keys():
+        if x in tmp:
+            config[x] = tmp[x]
+        else:
+            config[x] = config_defaults[x]
+
+    return config
+
 
 def save_config(cfg: Dict[str, Any]) -> None:
     """ToDo 0:
     Copy your working implementation from Part 5.
     """
-    pass
+    tmp = {}
+    path = module_relative_path("config.json")
+
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            try:
+                tmp = json.load(f)
+            except json.decoder.JSONDecodeError:
+                tmp = {}
+
+        for x in cfg.keys():
+            tmp[x] = cfg[x]
+
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(tmp, indent=2, ensure_ascii=False))
 
 
 # ---------- CLI loop ----------
@@ -214,9 +270,14 @@ def main() -> None:
     print(BANNER)
     config = load_config()
 
-    # Load sonnets (from cache or API)
+    # Load sonnets (from cache or API
     # ToDo 3: Time how long loading the sonnets take and print it to the console
+    start = time.perf_counter()
     sonnets = load_sonnets()
+    end = time.perf_counter()
+
+    elapsed = (end - start) * 1000
+    print(f"Elapsed time: {elapsed:.3f} [ms]")
 
     print(f"Loaded {len(sonnets)} sonnets.")
 
@@ -269,7 +330,7 @@ def main() -> None:
             continue
 
         # ToDo 3: Time how the execution of the user query takes
-
+        start = time.perf_counter()
         # query
         combined_results = []
 
@@ -303,7 +364,10 @@ def main() -> None:
         elapsed_ms = 0
 
         print_results(raw, combined_results, bool(config.get("highlight", True)), elapsed_ms)
+        end = time.perf_counter()
 
+        elapsed = (end - start) * 1000
+        print(f"Elapsed time: {elapsed:.3f} [ms]")
 
 if __name__ == "__main__":
     main()
